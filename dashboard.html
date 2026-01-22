@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Proxy 사용량</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Segoe UI', sans-serif; background: #f5f6f8; color: #191f28; min-height: 100vh; }
+
+  .header { background: #fff; border-bottom: 1px solid #f0f0f0; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .header .badge { font-size: 12px; background: #eff6ff; color: #3b82f6; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
+  .refresh-btn { background: none; border: 1.5px solid #e5e8ec; border-radius: 8px; padding: 7px 14px; font-size: 13px; color: #6b7684; cursor: pointer; font-weight: 500; transition: all .15s; }
+  .refresh-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 28px 20px; }
+
+  /* Account card */
+  .account-card { background: linear-gradient(135deg, #1a56db 0%, #3b82f6 100%); border-radius: 20px; padding: 28px; color: #fff; margin-bottom: 24px; }
+  .account-card .label { font-size: 12px; opacity: .75; font-weight: 500; margin-bottom: 6px; }
+  .account-card .org-name { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
+  .account-card .org-meta { font-size: 13px; opacity: .7; }
+  .account-card .uptime { margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.2); display: flex; gap: 28px; }
+  .account-card .uptime-item .val { font-size: 15px; font-weight: 700; }
+  .account-card .uptime-item .lbl { font-size: 11px; opacity: .65; margin-top: 2px; }
+
+  /* Summary grid */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+  .stat-card { background: #fff; border-radius: 16px; padding: 22px; }
+  .stat-card .lbl { font-size: 12px; color: #8b95a1; font-weight: 500; margin-bottom: 10px; }
+  .stat-card .val { font-size: 26px; font-weight: 800; letter-spacing: -1px; color: #191f28; }
+  .stat-card .sub { font-size: 12px; color: #8b95a1; margin-top: 4px; }
+  .stat-card.cost .val { color: #1a56db; }
+
+  /* Model table */
+  .section { background: #fff; border-radius: 16px; overflow: hidden; }
+  .section-header { padding: 20px 24px; border-bottom: 1px solid #f5f6f8; font-size: 15px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 24px; text-align: left; font-size: 11px; color: #8b95a1; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; background: #fafafa; }
+  td { padding: 16px 24px; font-size: 14px; border-top: 1px solid #f5f6f8; }
+  td.model { font-weight: 600; color: #191f28; font-size: 13px; }
+  td.num { color: #3d4c60; font-variant-numeric: tabular-nums; }
+  td.cost { color: #1a56db; font-weight: 700; }
+  tr:hover td { background: #fafcff; }
+
+  .model-chip { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .chip-haiku  { background: #f0fdf4; color: #15803d; }
+  .chip-sonnet { background: #eff6ff; color: #1d4ed8; }
+  .chip-opus   { background: #faf5ff; color: #7c3aed; }
+
+  .empty { padding: 48px; text-align: center; color: #b0b8c1; font-size: 14px; }
+  .updated { text-align: right; font-size: 11px; color: #b0b8c1; margin-top: 14px; }
+
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Claude Proxy</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="badge" id="status-badge">연결 중...</span>
+    <button class="refresh-btn" onclick="load()">새로고침</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- 계정 카드 -->
+  <div class="account-card" id="account-card">
+    <div class="label">연결된 계정</div>
+    <div class="org-name" id="org-name">—</div>
+    <div class="org-meta" id="org-meta">—</div>
+    <div class="uptime">
+      <div class="uptime-item">
+        <div class="val" id="uptime-val">—</div>
+        <div class="lbl">가동 시간</div>
+      </div>
+      <div class="uptime-item">
+        <div class="val" id="total-req-header">—</div>
+        <div class="lbl">총 요청</div>
+      </div>
+      <div class="uptime-item">
+        <div class="val" id="error-rate">—</div>
+        <div class="lbl">에러율</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 요약 카드 -->
+  <div class="grid">
+    <div class="stat-card">
+      <div class="lbl">입력 토큰</div>
+      <div class="val" id="input-tokens">—</div>
+      <div class="sub" id="cache-read">캐시 읽기 —</div>
+    </div>
+    <div class="stat-card">
+      <div class="lbl">출력 토큰</div>
+      <div class="val" id="output-tokens">—</div>
+      <div class="sub" id="cache-write">캐시 쓰기 —</div>
+    </div>
+    <div class="stat-card cost">
+      <div class="lbl">총 비용</div>
+      <div class="val" id="total-cost">—</div>
+      <div class="sub">USD (추정)</div>
+    </div>
+  </div>
+
+  <!-- 모델 테이블 -->
+  <div class="section">
+    <div class="section-header">모델별 사용량</div>
+    <div id="model-body"></div>
+  </div>
+
+  <div class="updated" id="updated-at"></div>
+</div>
+
+<script>
+function fmt(n) {
+  if (n >= 1_000_000) return (n/1_000_000).toFixed(2) + 'M';
+  if (n >= 1_000) return (n/1_000).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function fmtCost(v) {
+  if (v === 0) return '$0.00';
+  if (v < 0.0001) return '$' + v.toExponential(2);
+  return '$' + v.toFixed(4);
+}
+
+function uptime(startedAt) {
+  const diff = Math.floor((Date.now() - new Date(startedAt)) / 1000);
+  const h = Math.floor(diff / 3600), m = Math.floor((diff % 3600) / 60), s = diff % 60;
+  if (h > 0) return `${h}시간 ${m}분`;
+  if (m > 0) return `${m}분 ${s}초`;
+  return `${s}초`;
+}
+
+function chipClass(model) {
+  if (model.includes('opus'))   return 'chip-opus';
+  if (model.includes('sonnet')) return 'chip-sonnet';
+  return 'chip-haiku';
+}
+
+function shortModel(model) {
+  return model.replace('claude-', '').replace(/-20\d{6}$/, '');
+}
+
+async function load() {
+  try {
+    const res = await fetch('/usage');
+    const d = await res.json();
+
+    // 상태 배지
+    document.getElementById('status-badge').textContent = '● 정상';
+    document.getElementById('status-badge').style.background = '#f0fdf4';
+    document.getElementById('status-badge').style.color = '#15803d';
+
+    // 계정
+    const acc = d.account;
+    document.getElementById('org-name').textContent = acc?.organization_name || '알 수 없음';
+    document.getElementById('org-meta').textContent = acc
+      ? `${acc.organization_role} · ${acc.organization_uuid}`
+      : '계정 정보 없음';
+
+    // 가동 정보
+    document.getElementById('uptime-val').textContent = uptime(d.started_at);
+    document.getElementById('total-req-header').textContent = fmt(d.total.requests);
+    const errRate = d.total.requests > 0
+      ? ((d.total.errors / d.total.requests) * 100).toFixed(1) + '%'
+      : '0%';
+    document.getElementById('error-rate').textContent = errRate;
+
+    // 요약
+    const allCacheRead  = d.models.reduce((s, m) => s + m.cache_read_tokens,  0);
+    const allCacheWrite = d.models.reduce((s, m) => s + m.cache_write_tokens, 0);
+    document.getElementById('input-tokens').textContent  = fmt(d.total.input_tokens);
+    document.getElementById('output-tokens').textContent = fmt(d.total.output_tokens);
+    document.getElementById('cache-read').textContent    = '캐시 읽기 ' + fmt(allCacheRead);
+    document.getElementById('cache-write').textContent   = '캐시 쓰기 ' + fmt(allCacheWrite);
+    document.getElementById('total-cost').textContent    = fmtCost(d.total.cost_usd);
+
+    // 모델 테이블
+    const body = document.getElementById('model-body');
+    if (!d.models.length) {
+      body.innerHTML = '<div class="empty">아직 요청이 없습니다</div>';
+    } else {
+      body.innerHTML = `
+        <table>
+          <thead><tr>
+            <th>모델</th><th>요청</th><th>입력</th><th>출력</th><th>캐시 읽기</th><th>비용</th>
+          </tr></thead>
+          <tbody>${d.models.map(m => `
+            <tr>
+              <td class="model"><span class="model-chip ${chipClass(m.model)}">${shortModel(m.model)}</span></td>
+              <td class="num">${m.requests}</td>
+              <td class="num">${fmt(m.input_tokens)}</td>
+              <td class="num">${fmt(m.output_tokens)}</td>
+              <td class="num">${fmt(m.cache_read_tokens)}</td>
+              <td class="cost">${fmtCost(m.cost_usd)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    document.getElementById('updated-at').textContent = '마지막 업데이트: ' + new Date().toLocaleTimeString('ko-KR');
+  } catch {
+    document.getElementById('status-badge').textContent = '● 연결 실패';
+    document.getElementById('status-badge').style.background = '#fff1f2';
+    document.getElementById('status-badge').style.color = '#e11d48';
+  }
+}
+
+load();
+setInterval(load, 10000); // 10초마다 자동 갱신
+</script>
+</body>
+</html>
