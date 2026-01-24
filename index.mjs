@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
+import { writeFileSync } from 'fs';
+import { resolve } from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -121,6 +123,21 @@ async function doRefresh() {
   if (body.refresh_token) token.refresh = body.refresh_token;
   token.expiresAt = Date.now() + body.expires_in * 1000;
   console.log(`[AUTH] 갱신 완료 (${Math.floor(body.expires_in / 60)}분 후 만료)`);
+
+  // RTR: 갱신된 토큰을 .env에 저장
+  try {
+    const envPath = resolve(process.cwd(), '.env');
+    const content = [
+      `ACCESS_TOKEN=${token.access}`,
+      `REFRESH_TOKEN=${token.refresh}`,
+      `EXPIRES_AT=${token.expiresAt}`,
+      `PORT=${PORT}`,
+    ].join('\n') + '\n';
+    writeFileSync(envPath, content, 'utf8');
+    console.log('[AUTH] .env 업데이트 완료');
+  } catch (e) {
+    console.warn('[AUTH] .env 저장 실패:', e.message);
+  }
   fetchAccount().catch(() => {});
 }
 
