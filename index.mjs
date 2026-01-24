@@ -124,17 +124,24 @@ async function doRefresh() {
   token.expiresAt = Date.now() + body.expires_in * 1000;
   console.log(`[AUTH] 갱신 완료 (${Math.floor(body.expires_in / 60)}분 후 만료)`);
 
-  // RTR: 갱신된 토큰을 .env에 저장
+  // RTR: 갱신된 토큰만 .env에서 교체 (다른 설정 보존)
   try {
     const envPath = resolve(process.cwd(), '.env');
-    const content = [
-      `ACCESS_TOKEN=${token.access}`,
-      `REFRESH_TOKEN=${token.refresh}`,
-      `EXPIRES_AT=${token.expiresAt}`,
-      `PORT=${PORT}`,
-    ].join('\n') + '\n';
-    writeFileSync(envPath, content, 'utf8');
-    console.log('[AUTH] .env 업데이트 완료');
+    const updates = {
+      ACCESS_TOKEN: token.access,
+      REFRESH_TOKEN: token.refresh,
+      EXPIRES_AT: String(token.expiresAt),
+    };
+    let existing = '';
+    try { existing = readFileSync(envPath, 'utf8'); } catch {}
+    const lines = existing.split('\n').filter(Boolean);
+    for (const [k, v] of Object.entries(updates)) {
+      const idx = lines.findIndex(l => l.startsWith(`${k}=`));
+      if (idx >= 0) lines[idx] = `${k}=${v}`;
+      else lines.push(`${k}=${v}`);
+    }
+    writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
+    console.log('[AUTH] .env 토큰 업데이트 완료');
   } catch (e) {
     console.warn('[AUTH] .env 저장 실패:', e.message);
   }
